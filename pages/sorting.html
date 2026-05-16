@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sorting Visualizer · AlgoViz</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    #canvas-area {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 1.5rem;
+      gap: 2px;
+      overflow: hidden;
+    }
+    .bar {
+      flex: 1;
+      max-width: 40px;
+      border-radius: 3px 3px 0 0;
+      transition: height 0.05s;
+      position: relative;
+    }
+    .bar.default  { background: #38bdf8; }
+    .bar.compare  { background: #fbbf24; }
+    .bar.swap     { background: #f87171; }
+    .bar.sorted   { background: #4ade80; }
+    .bar.pivot    { background: #c084fc; }
+    .bar-label {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      color: #64748b;
+    }
+    #status {
+      text-align: center;
+      padding: 0.5rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      min-height: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <a href="../index.html">← Home</a>
+    <h1>📊 Sorting Algorithms</h1>
+  </div>
+
+  <div class="controls">
+    <label>Algoritma:
+      <select id="algo">
+        <option value="bubble">Bubble Sort</option>
+        <option value="selection">Selection Sort</option>
+        <option value="insertion">Insertion Sort</option>
+        <option value="merge">Merge Sort</option>
+        <option value="quick">Quick Sort</option>
+      </select>
+    </label>
+    <label>Ukuran: <span id="sizeVal">40</span>
+      <input type="range" id="size" min="10" max="100" value="40"/>
+    </label>
+    <label>Kecepatan: <span id="speedVal">50</span>ms
+      <input type="range" id="speed" min="5" max="500" value="50"/>
+    </label>
+    <button class="btn btn-secondary" id="randomBtn" onclick="generateArray()">🔀 Acak</button>
+    <button class="btn btn-primary" id="startBtn" onclick="startSort()">▶ Mulai</button>
+    <button class="btn btn-red" id="stopBtn" onclick="stopSort()" disabled>⏹ Stop</button>
+  </div>
+
+  <div class="complexity" id="complexityBar">
+    <span class="complexity-item">Time: <b>O(n²)</b></span>
+    <span class="complexity-item">Best: <b>O(n)</b></span>
+    <span class="complexity-item">Space: <b>O(1)</b></span>
+    <span class="complexity-item">Stable: <b>Ya</b></span>
+  </div>
+
+  <div class="info-bar">
+    Perbandingan: <span id="cmpCount">0</span> &nbsp;|&nbsp;
+    Swap: <span id="swapCount">0</span> &nbsp;|&nbsp;
+    Status: <span id="statusText">Siap</span>
+  </div>
+
+  <div id="canvas-area"></div>
+  <div id="status"></div>
+
+  <script>
+    let arr = [], bars = [], running = false, stopFlag = false;
+    let cmp = 0, swaps = 0;
+
+    const complexities = {
+      bubble:    { time: 'O(n²)', best: 'O(n)', space: 'O(1)', stable: 'Ya' },
+      selection: { time: 'O(n²)', best: 'O(n²)', space: 'O(1)', stable: 'Tidak' },
+      insertion: { time: 'O(n²)', best: 'O(n)', space: 'O(1)', stable: 'Ya' },
+      merge:     { time: 'O(n log n)', best: 'O(n log n)', space: 'O(n)', stable: 'Ya' },
+      quick:     { time: 'O(n log n)', best: 'O(n log n)', space: 'O(log n)', stable: 'Tidak' },
+    };
+
+    document.getElementById('size').addEventListener('input', function() {
+      document.getElementById('sizeVal').textContent = this.value;
+      if (!running) generateArray();
+    });
+    document.getElementById('speed').addEventListener('input', function() {
+      document.getElementById('speedVal').textContent = this.value;
+    });
+    document.getElementById('algo').addEventListener('change', function() {
+      updateComplexity(this.value);
+      if (!running) generateArray();
+    });
+
+    function updateComplexity(algo) {
+      const c = complexities[algo];
+      document.getElementById('complexityBar').innerHTML =
+        `<span class="complexity-item">Time: <b>${c.time}</b></span>
+         <span class="complexity-item">Best: <b>${c.best}</b></span>
+         <span class="complexity-item">Space: <b>${c.space}</b></span>
+         <span class="complexity-item">Stable: <b>${c.stable}</b></span>`;
+    }
+
+    function generateArray() {
+      const n = parseInt(document.getElementById('size').value);
+      arr = Array.from({length: n}, () => Math.floor(Math.random() * 90) + 10);
+      renderBars();
+      resetStats();
+    }
+
+    function renderBars() {
+      const area = document.getElementById('canvas-area');
+      area.innerHTML = '';
+      bars = [];
+      const maxVal = Math.max(...arr);
+      const areaH = area.clientHeight - 30;
+      arr.forEach((v, i) => {
+        const bar = document.createElement('div');
+        bar.className = 'bar default';
+        bar.style.height = `${(v / maxVal) * areaH}px`;
+        if (arr.length <= 50) {
+          const lbl = document.createElement('span');
+          lbl.className = 'bar-label';
+          lbl.textContent = v;
+          bar.appendChild(lbl);
+        }
+        area.appendChild(bar);
+        bars.push(bar);
+      });
+    }
+
+    function resetStats() {
+      cmp = 0; swaps = 0;
+      document.getElementById('cmpCount').textContent = '0';
+      document.getElementById('swapCount').textContent = '0';
+      document.getElementById('statusText').textContent = 'Siap';
+      document.getElementById('status').textContent = '';
+    }
+
+    function setColor(indices, cls) {
+      indices.forEach(i => {
+        if (bars[i]) {
+          bars[i].className = 'bar ' + cls;
+        }
+      });
+    }
+
+    function updateBar(i) {
+      const maxVal = Math.max(...arr);
+      const area = document.getElementById('canvas-area');
+      const areaH = area.clientHeight - 30;
+      bars[i].style.height = `${(arr[i] / maxVal) * areaH}px`;
+      if (arr.length <= 50) {
+        const lbl = bars[i].querySelector('.bar-label');
+        if (lbl) lbl.textContent = arr[i];
+      }
+    }
+
+    function delay() {
+      return new Promise(r => setTimeout(r, parseInt(document.getElementById('speed').value)));
+    }
+
+    async function startSort() {
+      if (running) return;
+      running = true; stopFlag = false;
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('randomBtn').disabled = true;
+      document.getElementById('statusText').textContent = 'Berjalan...';
+      resetStats();
+
+      const algo = document.getElementById('algo').value;
+      if (algo === 'bubble') await bubbleSort();
+      else if (algo === 'selection') await selectionSort();
+      else if (algo === 'insertion') await insertionSort();
+      else if (algo === 'merge') await mergeSort(0, arr.length - 1);
+      else if (algo === 'quick') await quickSort(0, arr.length - 1);
+
+      if (!stopFlag) {
+        bars.forEach((b, i) => setColor([i], 'sorted'));
+        document.getElementById('statusText').textContent = '✅ Selesai!';
+        document.getElementById('status').textContent = `Selesai dalam ${cmp} perbandingan dan ${swaps} swap.`;
+      }
+      running = false;
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('randomBtn').disabled = false;
+    }
+
+    function stopSort() {
+      stopFlag = true;
+      document.getElementById('statusText').textContent = 'Dihentikan';
+      bars.forEach((b, i) => setColor([i], 'default'));
+    }
+
+    async function bubbleSort() {
+      const n = arr.length;
+      for (let i = 0; i < n - 1; i++) {
+        for (let j = 0; j < n - i - 1; j++) {
+          if (stopFlag) return;
+          setColor([j, j+1], 'compare'); cmp++;
+          document.getElementById('cmpCount').textContent = cmp;
+          await delay();
+          if (arr[j] > arr[j+1]) {
+            [arr[j], arr[j+1]] = [arr[j+1], arr[j]];
+            setColor([j, j+1], 'swap'); swaps++;
+            document.getElementById('swapCount').textContent = swaps;
+            updateBar(j); updateBar(j+1);
+            await delay();
+          }
+          setColor([j, j+1], 'default');
+        }
+        setColor([n-i-1], 'sorted');
+      }
+    }
+
+    async function selectionSort() {
+      const n = arr.length;
+      for (let i = 0; i < n - 1; i++) {
+        let minIdx = i;
+        setColor([i], 'pivot');
+        for (let j = i + 1; j < n; j++) {
+          if (stopFlag) return;
+          setColor([j], 'compare'); cmp++;
+          document.getElementById('cmpCount').textContent = cmp;
+          await delay();
+          if (arr[j] < arr[minIdx]) {
+            if (minIdx !== i) setColor([minIdx], 'default');
+            minIdx = j;
+            setColor([minIdx], 'pivot');
+          } else {
+            setColor([j], 'default');
+          }
+        }
+        if (minIdx !== i) {
+          [arr[i], arr[minIdx]] = [arr[minIdx], arr[i]];
+          setColor([i, minIdx], 'swap'); swaps++;
+          document.getElementById('swapCount').textContent = swaps;
+          updateBar(i); updateBar(minIdx);
+          await delay();
+        }
+        setColor([i, minIdx], 'sorted');
+      }
+      setColor([n-1], 'sorted');
+    }
+
+    async function insertionSort() {
+      const n = arr.length;
+      setColor([0], 'sorted');
+      for (let i = 1; i < n; i++) {
+        if (stopFlag) return;
+        let key = arr[i], j = i - 1;
+        setColor([i], 'compare');
+        await delay();
+        while (j >= 0 && arr[j] > key) {
+          if (stopFlag) return;
+          cmp++; document.getElementById('cmpCount').textContent = cmp;
+          arr[j+1] = arr[j];
+          setColor([j, j+1], 'swap'); swaps++;
+          document.getElementById('swapCount').textContent = swaps;
+          updateBar(j+1);
+          await delay();
+          setColor([j+1], 'sorted');
+          j--;
+        }
+        arr[j+1] = key;
+        updateBar(j+1);
+        setColor([j+1], 'sorted');
+      }
+    }
+
+    async function mergeSort(l, r) {
+      if (stopFlag || l >= r) return;
+      const m = Math.floor((l + r) / 2);
+      await mergeSort(l, m);
+      await mergeSort(m+1, r);
+      await merge(l, m, r);
+    }
+
+    async function merge(l, m, r) {
+      const left = arr.slice(l, m+1), right = arr.slice(m+1, r+1);
+      let i = 0, j = 0, k = l;
+      while (i < left.length && j < right.length) {
+        if (stopFlag) return;
+        setColor([k], 'compare'); cmp++;
+        document.getElementById('cmpCount').textContent = cmp;
+        await delay();
+        if (left[i] <= right[j]) { arr[k] = left[i++]; }
+        else { arr[k] = right[j++]; swaps++; document.getElementById('swapCount').textContent = swaps; }
+        updateBar(k);
+        setColor([k], 'sorted');
+        k++;
+      }
+      while (i < left.length) { arr[k] = left[i++]; updateBar(k); setColor([k], 'sorted'); k++; }
+      while (j < right.length) { arr[k] = right[j++]; updateBar(k); setColor([k], 'sorted'); k++; }
+    }
+
+    async function quickSort(low, high) {
+      if (stopFlag || low >= high) return;
+      const pi = await partition(low, high);
+      await quickSort(low, pi - 1);
+      await quickSort(pi + 1, high);
+    }
+
+    async function partition(low, high) {
+      const pivot = arr[high];
+      setColor([high], 'pivot');
+      let i = low - 1;
+      for (let j = low; j < high; j++) {
+        if (stopFlag) return i+1;
+        setColor([j], 'compare'); cmp++;
+        document.getElementById('cmpCount').textContent = cmp;
+        await delay();
+        if (arr[j] < pivot) {
+          i++;
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+          setColor([i, j], 'swap'); swaps++;
+          document.getElementById('swapCount').textContent = swaps;
+          updateBar(i); updateBar(j);
+          await delay();
+        }
+        setColor([j], 'default');
+      }
+      [arr[i+1], arr[high]] = [arr[high], arr[i+1]];
+      updateBar(i+1); updateBar(high);
+      setColor([i+1], 'sorted');
+      setColor([high], 'default');
+      return i + 1;
+    }
+
+    // Init
+    generateArray();
+  </script>
+</body>
+</html>

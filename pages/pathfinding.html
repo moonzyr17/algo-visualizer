@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pathfinding Visualizer · AlgoViz</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    #grid-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      overflow: auto;
+    }
+    #grid {
+      display: inline-grid;
+      gap: 1px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+    .cell {
+      width: 24px;
+      height: 24px;
+      background: #0f172a;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .cell.wall    { background: #334155; }
+    .cell.start   { background: #4ade80; }
+    .cell.end     { background: #f87171; }
+    .cell.visited { background: #1e40af; animation: visitAnim 0.3s ease; }
+    .cell.path    { background: #fbbf24; animation: pathAnim 0.3s ease; }
+    .cell.frontier{ background: #38bdf8; }
+    @keyframes visitAnim {
+      0%   { transform: scale(0.3); background: #818cf8; }
+      50%  { transform: scale(1.1); }
+      100% { transform: scale(1); background: #1e40af; }
+    }
+    @keyframes pathAnim {
+      0%   { transform: scale(0.5); }
+      100% { transform: scale(1); }
+    }
+    .legend {
+      display: flex;
+      gap: 1rem;
+      padding: 0.5rem 1.5rem;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      border-top: 1px solid #334155;
+      background: #1e293b;
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+    .legend-dot { width: 14px; height: 14px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <a href="../index.html">← Home</a>
+    <h1>🗺️ Pathfinding Algorithms</h1>
+  </div>
+
+  <div class="controls">
+    <label>Algoritma:
+      <select id="algo">
+        <option value="bfs">BFS (Breadth-First Search)</option>
+        <option value="dfs">DFS (Depth-First Search)</option>
+        <option value="dijkstra">Dijkstra</option>
+      </select>
+    </label>
+    <label>Kecepatan: <span id="speedVal">20</span>ms
+      <input type="range" id="speed" min="1" max="100" value="20"/>
+    </label>
+    <label>Mode:
+      <select id="mode">
+        <option value="wall">Gambar Dinding</option>
+        <option value="start">Pindah Start</option>
+        <option value="end">Pindah End</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" onclick="startSearch()">▶ Mulai</button>
+    <button class="btn btn-secondary" onclick="clearPath()">🧹 Hapus Path</button>
+    <button class="btn btn-red" onclick="clearAll()">🗑️ Reset</button>
+    <button class="btn btn-purple" onclick="generateMaze()">🌀 Maze Acak</button>
+  </div>
+
+  <div class="info-bar">
+    Node dikunjungi: <span id="visitedCount">0</span> &nbsp;|&nbsp;
+    Panjang path: <span id="pathLen">0</span> &nbsp;|&nbsp;
+    Status: <span id="statusText">Klik grid untuk gambar dinding</span>
+  </div>
+
+  <div id="grid-container">
+    <div id="grid"></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div> Start</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div> End</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#334155"></div> Dinding</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#1e40af"></div> Dikunjungi</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div> Frontier</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div> Path</div>
+  </div>
+
+  <script>
+    const ROWS = 20, COLS = 35;
+    let grid = [], startCell = [2, 2], endCell = [ROWS-3, COLS-3];
+    let isMouseDown = false, running = false;
+
+    document.getElementById('speed').addEventListener('input', function() {
+      document.getElementById('speedVal').textContent = this.value;
+    });
+
+    function initGrid() {
+      grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+      renderGrid();
+    }
+
+    function renderGrid() {
+      const g = document.getElementById('grid');
+      g.style.gridTemplateColumns = `repeat(${COLS}, 24px)`;
+      g.innerHTML = '';
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.r = r; cell.dataset.c = c;
+          if (r === startCell[0] && c === startCell[1]) cell.classList.add('start');
+          else if (r === endCell[0] && c === endCell[1]) cell.classList.add('end');
+          else if (grid[r][c] === 1) cell.classList.add('wall');
+          cell.addEventListener('mousedown', onMouseDown);
+          cell.addEventListener('mouseenter', onMouseEnter);
+          g.appendChild(cell);
+        }
+      }
+    }
+
+    function getCell(r, c) {
+      return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+    }
+
+    function onMouseDown(e) {
+      if (running) return;
+      isMouseDown = true;
+      handleCell(e.target);
+    }
+
+    function onMouseEnter(e) {
+      if (!isMouseDown || running) return;
+      handleCell(e.target);
+    }
+
+    document.addEventListener('mouseup', () => isMouseDown = false);
+
+    function handleCell(cell) {
+      const r = parseInt(cell.dataset.r), c = parseInt(cell.dataset.c);
+      const mode = document.getElementById('mode').value;
+      if (mode === 'wall') {
+        if ((r === startCell[0] && c === startCell[1]) || (r === endCell[0] && c === endCell[1])) return;
+        grid[r][c] = grid[r][c] === 1 ? 0 : 1;
+        cell.classList.toggle('wall');
+      } else if (mode === 'start') {
+        const old = getCell(startCell[0], startCell[1]);
+        if (old) old.classList.remove('start');
+        startCell = [r, c];
+        grid[r][c] = 0;
+        cell.classList.remove('wall', 'end');
+        cell.classList.add('start');
+      } else if (mode === 'end') {
+        const old = getCell(endCell[0], endCell[1]);
+        if (old) old.classList.remove('end');
+        endCell = [r, c];
+        grid[r][c] = 0;
+        cell.classList.remove('wall', 'start');
+        cell.classList.add('end');
+      }
+    }
+
+    function clearPath() {
+      document.querySelectorAll('.cell.visited, .cell.path, .cell.frontier').forEach(c => {
+        c.classList.remove('visited', 'path', 'frontier');
+      });
+      document.getElementById('visitedCount').textContent = '0';
+      document.getElementById('pathLen').textContent = '0';
+      document.getElementById('statusText').textContent = 'Path dihapus';
+    }
+
+    function clearAll() {
+      grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+      renderGrid();
+      document.getElementById('visitedCount').textContent = '0';
+      document.getElementById('pathLen').textContent = '0';
+      document.getElementById('statusText').textContent = 'Grid direset';
+    }
+
+    function generateMaze() {
+      if (running) return;
+      grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if ((r === startCell[0] && c === startCell[1]) || (r === endCell[0] && c === endCell[1])) continue;
+          if (Math.random() < 0.3) grid[r][c] = 1;
+        }
+      }
+      renderGrid();
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    async function startSearch() {
+      if (running) return;
+      clearPath();
+      running = true;
+      document.getElementById('statusText').textContent = 'Mencari...';
+      const algo = document.getElementById('algo').value;
+      let result;
+      if (algo === 'bfs') result = await bfs();
+      else if (algo === 'dfs') result = await dfs();
+      else if (algo === 'dijkstra') result = await dijkstra();
+
+      if (result) {
+        await animatePath(result);
+        document.getElementById('pathLen').textContent = result.length;
+        document.getElementById('statusText').textContent = `✅ Path ditemukan! (${result.length} langkah)`;
+      } else {
+        document.getElementById('statusText').textContent = '❌ Path tidak ditemukan!';
+      }
+      running = false;
+    }
+
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+
+    function inBounds(r, c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+
+    async function bfs() {
+      const visited = Array.from({length: ROWS}, () => Array(COLS).fill(false));
+      const prev = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+      const queue = [[...startCell]];
+      visited[startCell[0]][startCell[1]] = true;
+      const spd = parseInt(document.getElementById('speed').value);
+      let visitedCount = 0;
+
+      while (queue.length) {
+        const [r, c] = queue.shift();
+        if (r === endCell[0] && c === endCell[1]) return buildPath(prev);
+        for (const [dr, dc] of dirs) {
+          const nr = r+dr, nc = c+dc;
+          if (!inBounds(nr, nc) || visited[nr][nc] || grid[nr][nc] === 1) continue;
+          visited[nr][nc] = true;
+          prev[nr][nc] = [r, c];
+          queue.push([nr, nc]);
+          if (!(nr === endCell[0] && nc === endCell[1]) && !(nr === startCell[0] && nc === startCell[1])) {
+            getCell(nr, nc)?.classList.add('visited');
+            visitedCount++;
+            document.getElementById('visitedCount').textContent = visitedCount;
+          }
+          await delay(spd);
+        }
+      }
+      return null;
+    }
+
+    async function dfs() {
+      const visited = Array.from({length: ROWS}, () => Array(COLS).fill(false));
+      const prev = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+      const stack = [[...startCell]];
+      const spd = parseInt(document.getElementById('speed').value);
+      let visitedCount = 0;
+
+      while (stack.length) {
+        const [r, c] = stack.pop();
+        if (visited[r][c]) continue;
+        visited[r][c] = true;
+        if (r === endCell[0] && c === endCell[1]) return buildPath(prev);
+        if (!(r === startCell[0] && c === startCell[1])) {
+          getCell(r, c)?.classList.add('visited');
+          visitedCount++;
+          document.getElementById('visitedCount').textContent = visitedCount;
+        }
+        await delay(spd);
+        for (const [dr, dc] of dirs) {
+          const nr = r+dr, nc = c+dc;
+          if (!inBounds(nr, nc) || visited[nr][nc] || grid[nr][nc] === 1) continue;
+          prev[nr][nc] = [r, c];
+          stack.push([nr, nc]);
+        }
+      }
+      return null;
+    }
+
+    async function dijkstra() {
+      const dist = Array.from({length: ROWS}, () => Array(COLS).fill(Infinity));
+      const prev = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+      dist[startCell[0]][startCell[1]] = 0;
+      const pq = [[0, ...startCell]];
+      const spd = parseInt(document.getElementById('speed').value);
+      let visitedCount = 0;
+
+      while (pq.length) {
+        pq.sort((a, b) => a[0] - b[0]);
+        const [d, r, c] = pq.shift();
+        if (d > dist[r][c]) continue;
+        if (r === endCell[0] && c === endCell[1]) return buildPath(prev);
+        if (!(r === startCell[0] && c === startCell[1])) {
+          getCell(r, c)?.classList.add('visited');
+          visitedCount++;
+          document.getElementById('visitedCount').textContent = visitedCount;
+        }
+        await delay(spd);
+        for (const [dr, dc] of dirs) {
+          const nr = r+dr, nc = c+dc;
+          if (!inBounds(nr, nc) || grid[nr][nc] === 1) continue;
+          const nd = d + 1;
+          if (nd < dist[nr][nc]) {
+            dist[nr][nc] = nd;
+            prev[nr][nc] = [r, c];
+            pq.push([nd, nr, nc]);
+          }
+        }
+      }
+      return null;
+    }
+
+    function buildPath(prev) {
+      const path = [];
+      let cur = [...endCell];
+      while (cur && !(cur[0] === startCell[0] && cur[1] === startCell[1])) {
+        path.unshift(cur);
+        cur = prev[cur[0]][cur[1]];
+      }
+      return path;
+    }
+
+    async function animatePath(path) {
+      for (const [r, c] of path) {
+        if (r === endCell[0] && c === endCell[1]) continue;
+        const cell = getCell(r, c);
+        if (cell) { cell.classList.remove('visited'); cell.classList.add('path'); }
+        await delay(30);
+      }
+    }
+
+    initGrid();
+  </script>
+</body>
+</html>

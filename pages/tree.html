@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tree Traversal · AlgoViz</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    #tree-container {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+      background: #0f172a;
+    }
+    #tree-svg {
+      width: 100%;
+      min-height: 400px;
+    }
+    .node-circle {
+      fill: #1e293b;
+      stroke: #38bdf8;
+      stroke-width: 2;
+      transition: fill 0.3s;
+      cursor: pointer;
+    }
+    .node-circle.active   { fill: #fbbf24; stroke: #fbbf24; }
+    .node-circle.visited  { fill: #1e40af; stroke: #818cf8; }
+    .node-circle.current  { fill: #f87171; stroke: #f87171; }
+    .node-text {
+      fill: #e2e8f0;
+      font-size: 13px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+    }
+    .edge { stroke: #334155; stroke-width: 2; }
+    .edge.active { stroke: #38bdf8; stroke-width: 2.5; }
+    #traversal-result {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding: 0.75rem 1.5rem;
+      background: #1e293b;
+      border-top: 1px solid #334155;
+      min-height: 3rem;
+      align-items: center;
+    }
+    .result-node {
+      padding: 0.2rem 0.6rem;
+      border-radius: 0.4rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      transition: all 0.3s;
+    }
+    .result-node.active {
+      background: #fbbf24;
+      color: #0f172a;
+      border-color: #fbbf24;
+      font-weight: 700;
+    }
+    .result-node.done {
+      background: #1e40af;
+      color: #e2e8f0;
+      border-color: #818cf8;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <a href="../index.html">← Home</a>
+    <h1>🌳 Tree Traversal</h1>
+  </div>
+
+  <div class="controls">
+    <label>Traversal:
+      <select id="algo">
+        <option value="inorder">Inorder (Left → Root → Right)</option>
+        <option value="preorder">Preorder (Root → Left → Right)</option>
+        <option value="postorder">Postorder (Left → Right → Root)</option>
+        <option value="levelorder">Level Order (BFS)</option>
+      </select>
+    </label>
+    <label>Kecepatan: <span id="speedVal">600</span>ms
+      <input type="range" id="speed" min="100" max="2000" value="600" step="100"/>
+    </label>
+    <label>Insert nilai:
+      <input type="number" id="insertVal" min="1" max="99" placeholder="1-99"
+        style="width:70px; background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:0.4rem; border-radius:0.5rem; font-size:0.85rem;"/>
+    </label>
+    <button class="btn btn-green" onclick="insertNode()">➕ Insert</button>
+    <button class="btn btn-primary" onclick="startTraversal()">▶ Traversal</button>
+    <button class="btn btn-secondary" onclick="resetTree()">🔄 Reset</button>
+    <button class="btn btn-purple" onclick="randomTree()">🎲 Acak</button>
+  </div>
+
+  <div class="complexity">
+    <span class="complexity-item">Time: <b>O(n)</b></span>
+    <span class="complexity-item">Space: <b>O(h)</b> — h = tinggi pohon</span>
+    <span class="complexity-item">Nodes: <b id="nodeCount">0</b></span>
+    <span class="complexity-item">Height: <b id="treeHeight">0</b></span>
+  </div>
+
+  <div class="info-bar">
+    Traversal: <span id="algoName">Inorder</span> &nbsp;|&nbsp;
+    Status: <span id="statusText">Insert node atau klik Acak</span>
+  </div>
+
+  <div id="tree-container">
+    <svg id="tree-svg"></svg>
+  </div>
+
+  <div style="padding:0.4rem 1.5rem; font-size:0.8rem; color:#64748b; background:#1e293b; border-top:1px solid #334155;">
+    Hasil traversal:
+  </div>
+  <div id="traversal-result"></div>
+
+  <script>
+    class TreeNode {
+      constructor(val) {
+        this.val = val;
+        this.left = null;
+        this.right = null;
+        this.x = 0; this.y = 0;
+      }
+    }
+
+    let root = null, running = false;
+    const NODE_R = 22, LEVEL_H = 70;
+
+    document.getElementById('speed').addEventListener('input', function() {
+      document.getElementById('speedVal').textContent = this.value;
+    });
+
+    document.getElementById('insertVal').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') insertNode();
+    });
+
+    function insert(node, val) {
+      if (!node) return new TreeNode(val);
+      if (val < node.val) node.left = insert(node.left, val);
+      else if (val > node.val) node.right = insert(node.right, val);
+      return node;
+    }
+
+    function insertNode() {
+      if (running) return;
+      const v = parseInt(document.getElementById('insertVal').value);
+      if (isNaN(v) || v < 1 || v > 99) return;
+      root = insert(root, v);
+      document.getElementById('insertVal').value = '';
+      renderTree();
+      updateStats();
+    }
+
+    function resetTree() {
+      if (running) return;
+      root = null;
+      document.getElementById('traversal-result').innerHTML = '';
+      document.getElementById('statusText').textContent = 'Insert node atau klik Acak';
+      renderTree();
+      updateStats();
+    }
+
+    function randomTree() {
+      if (running) return;
+      root = null;
+      const vals = Array.from({length: 10}, () => Math.floor(Math.random()*90)+5);
+      const unique = [...new Set(vals)].slice(0, 9);
+      unique.forEach(v => root = insert(root, v));
+      document.getElementById('traversal-result').innerHTML = '';
+      renderTree();
+      updateStats();
+    }
+
+    function treeHeight(node) {
+      if (!node) return 0;
+      return 1 + Math.max(treeHeight(node.left), treeHeight(node.right));
+    }
+
+    function countNodes(node) {
+      if (!node) return 0;
+      return 1 + countNodes(node.left) + countNodes(node.right);
+    }
+
+    function updateStats() {
+      document.getElementById('nodeCount').textContent = countNodes(root);
+      document.getElementById('treeHeight').textContent = treeHeight(root);
+    }
+
+    // Layout: assign x,y to each node
+    let nodeMap = {};
+    function assignPositions(node, depth, left, right) {
+      if (!node) return;
+      const mid = (left + right) / 2;
+      node.x = mid;
+      node.y = depth * LEVEL_H + 50;
+      nodeMap[node.val] = node;
+      assignPositions(node.left, depth+1, left, mid);
+      assignPositions(node.right, depth+1, mid, right);
+    }
+
+    function renderTree() {
+      const svg = document.getElementById('tree-svg');
+      svg.innerHTML = '';
+      if (!root) return;
+
+      const h = treeHeight(root);
+      const width = Math.max(600, Math.pow(2, h) * 50);
+      const height = h * LEVEL_H + 100;
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.style.minHeight = height + 'px';
+
+      nodeMap = {};
+      assignPositions(root, 0, 0, width);
+      drawEdges(svg, root);
+      drawNodes(svg, root);
+    }
+
+    function drawEdges(svg, node) {
+      if (!node) return;
+      if (node.left) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', node.x); line.setAttribute('y1', node.y);
+        line.setAttribute('x2', node.left.x); line.setAttribute('y2', node.left.y);
+        line.setAttribute('class', 'edge');
+        line.id = `edge-${node.val}-${node.left.val}`;
+        svg.appendChild(line);
+        drawEdges(svg, node.left);
+      }
+      if (node.right) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', node.x); line.setAttribute('y1', node.y);
+        line.setAttribute('x2', node.right.x); line.setAttribute('y2', node.right.y);
+        line.setAttribute('class', 'edge');
+        line.id = `edge-${node.val}-${node.right.val}`;
+        svg.appendChild(line);
+        drawEdges(svg, node.right);
+      }
+    }
+
+    function drawNodes(svg, node) {
+      if (!node) return;
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', node.x); circle.setAttribute('cy', node.y);
+      circle.setAttribute('r', NODE_R);
+      circle.setAttribute('class', 'node-circle');
+      circle.id = `node-${node.val}`;
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', node.x); text.setAttribute('y', node.y);
+      text.setAttribute('class', 'node-text');
+      text.textContent = node.val;
+      g.appendChild(circle); g.appendChild(text);
+      svg.appendChild(g);
+      drawNodes(svg, node.left);
+      drawNodes(svg, node.right);
+    }
+
+    function highlightNode(val, cls) {
+      const el = document.getElementById(`node-${val}`);
+      if (el) el.className.baseVal = `node-circle ${cls}`;
+    }
+
+    function delay() {
+      return new Promise(r => setTimeout(r, parseInt(document.getElementById('speed').value)));
+    }
+
+    async function startTraversal() {
+      if (running || !root) return;
+      running = true;
+      // Reset visuals
+      renderTree();
+      document.getElementById('traversal-result').innerHTML = '';
+      const algo = document.getElementById('algo').value;
+      const names = { inorder: 'Inorder', preorder: 'Preorder', postorder: 'Postorder', levelorder: 'Level Order' };
+      document.getElementById('algoName').textContent = names[algo];
+      document.getElementById('statusText').textContent = 'Berjalan...';
+
+      const order = [];
+      if (algo === 'inorder') collectInorder(root, order);
+      else if (algo === 'preorder') collectPreorder(root, order);
+      else if (algo === 'postorder') collectPostorder(root, order);
+      else collectLevelOrder(root, order);
+
+      // Build result nodes
+      const resultDiv = document.getElementById('traversal-result');
+      order.forEach((v, i) => {
+        const span = document.createElement('span');
+        span.className = 'result-node';
+        span.id = `result-${i}`;
+        span.textContent = v;
+        resultDiv.appendChild(span);
+      });
+
+      // Animate
+      for (let i = 0; i < order.length; i++) {
+        const v = order[i];
+        highlightNode(v, 'current');
+        const rn = document.getElementById(`result-${i}`);
+        if (rn) rn.classList.add('active');
+        await delay();
+        highlightNode(v, 'visited');
+        if (rn) { rn.classList.remove('active'); rn.classList.add('done'); }
+      }
+
+      document.getElementById('statusText').textContent = `✅ Selesai! ${order.length} node dikunjungi`;
+      running = false;
+    }
+
+    function collectInorder(node, arr) {
+      if (!node) return;
+      collectInorder(node.left, arr);
+      arr.push(node.val);
+      collectInorder(node.right, arr);
+    }
+
+    function collectPreorder(node, arr) {
+      if (!node) return;
+      arr.push(node.val);
+      collectPreorder(node.left, arr);
+      collectPreorder(node.right, arr);
+    }
+
+    function collectPostorder(node, arr) {
+      if (!node) return;
+      collectPostorder(node.left, arr);
+      collectPostorder(node.right, arr);
+      arr.push(node.val);
+    }
+
+    function collectLevelOrder(node, arr) {
+      if (!node) return;
+      const q = [node];
+      while (q.length) {
+        const cur = q.shift();
+        arr.push(cur.val);
+        if (cur.left) q.push(cur.left);
+        if (cur.right) q.push(cur.right);
+      }
+    }
+
+    // Init with sample tree
+    [50, 30, 70, 20, 40, 60, 80, 10, 35].forEach(v => root = insert(root, v));
+    renderTree();
+    updateStats();
+  </script>
+</body>
+</html>
